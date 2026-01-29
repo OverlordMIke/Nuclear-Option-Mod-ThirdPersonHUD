@@ -6,25 +6,25 @@ using UnityEngine;
 namespace ThirdPersonHUD
 {
     [BepInPlugin(MyGUID, PluginName, VersionString)]
-    public class ForceShowHUDPlugin : BaseUnityPlugin
+    public class ThirdPersonHUD : BaseUnityPlugin
     {
         // Mod identification
         private const string MyGUID = "com.gnol.thirdpersonhud";
         private const string PluginName = "ThirdPersonHUD";
-        private const string VersionString = "1.0.2"; // Bumped for this change
+        private const string VersionString = "1.1.0";
 
         public static ManualLogSource Log { get; private set; }
 
         // Config entries
         private static ConfigEntry<bool> Enabled { get; set; }
         private static ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
-        private static ConfigEntry<KeyboardShortcut> DebugKey { get; set; }
 
         // Runtime state
         private bool isEnabled;
 
         // Camera References
         private readonly string[] orbit = { "COIN", "trainer", "UtilityHelo1", "CAS1", "AttackHelo1", "Fighter1", "SmallFighter1", "QuadVTOL1", "Multirole1", "EW1", "Darkreach" };
+        
         private void Awake()
         {
             Log = Logger;
@@ -34,9 +34,9 @@ namespace ThirdPersonHUD
             Enabled = Config.Bind(
                 section: "General",
                 key: "Enabled",
-                defaultValue: false,  // Changed: starts disabled
+                defaultValue: true,
                 configDescription: new ConfigDescription(
-                    "Whether the HUD forcing is active (forces HUD visible). Can be toggled in-game with the hotkey below."
+                    "Whether the mod is active. Can be toggled in-game with the hotkey below."
                 )
             );
 
@@ -45,16 +45,7 @@ namespace ThirdPersonHUD
                 key: "Toggle Hotkey",
                 defaultValue: new KeyboardShortcut(KeyCode.F10),
                 configDescription: new ConfigDescription(
-                    "Press this key (with optional modifiers) to toggle the mod on/off."
-                )
-            );
-
-            DebugKey = Config.Bind(
-                section: "Hotkeys",
-                key: "Debug Hotkey",
-                defaultValue: new KeyboardShortcut(KeyCode.F11),
-                configDescription: new ConfigDescription(
-                    "Press this key (with optional modifiers) to print debug message to console."
+                    "Press this key to toggle the mod on/off."
                 )
             );
 
@@ -69,11 +60,6 @@ namespace ThirdPersonHUD
                 {
                     isEnabled = newState;
                     Log.LogInfo($"Mod enabled state changed via config: {isEnabled}");
-                    if (!isEnabled)
-                    {
-                        HideGameObjectByPath("SceneEssentials/Canvas/HUDCanvas");
-                        HideGameObjectByPath("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-                    }
                 }
             };
 
@@ -88,40 +74,6 @@ namespace ThirdPersonHUD
                 isEnabled = !isEnabled;
                 Enabled.Value = isEnabled; // Sync to config (auto-saves)
                 Log.LogInfo($"ThirdPersonHUD toggled {(isEnabled ? "ON" : "OFF")} via hotkey");
-
-                if (!isEnabled)
-                {
-                    HideGameObjectByPath("SceneEssentials/Canvas/HUDCanvas");
-                    HideGameObjectByPath("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-                }
-                // No immediate enable needed when turning ON → Update() will handle it next frames
-            }
-
-            if (DebugKey.Value.IsDown())
-            {
-                GameObject hudObject = GameObject.Find("Main Camera");
-                if (hudObject != null)
-                {
-                    if (hudObject.transform.parent != null)
-                    {
-                        if (hudObject.transform.parent.transform.parent != null)
-                        {
-                            Log.LogInfo(hudObject.transform.parent.transform.parent.name);
-                        }
-                        else
-                        {
-                            Log.LogInfo("Main Camera Parent PARENT not found.");
-                        }
-                    }
-                    else
-                    {
-                        Log.LogInfo("Main Camera Parent not found.");
-                    }
-                }
-                else
-                {
-                    Log.LogInfo("Main Camera not found.");
-                }
             }
 
             // Only force-enable if currently enabled
@@ -191,10 +143,6 @@ namespace ThirdPersonHUD
             }
         }
 
-        /// <summary>
-        /// Immediately hides both HUD elements if they currently exist.
-        /// Called when toggling off (or config changed to disabled).
-        /// </summary>
         private void HideGameObjectByPath(string path)
         {
             GameObject go = GameObject.Find(path);
@@ -210,18 +158,6 @@ namespace ThirdPersonHUD
             if (go != null && !go.activeSelf)
             {
                 go.SetActive(true);
-            }
-        }
-
-        private void LogHierarchy(GameObject go, string indent = "")
-        {
-            if (go == null) return;
-
-            Log.LogInfo($"{indent}→ {go.name} (active: {go.activeSelf})");
-
-            foreach (Transform child in go.transform)
-            {
-                LogHierarchy(child.gameObject, indent + "  ");
             }
         }
     }
