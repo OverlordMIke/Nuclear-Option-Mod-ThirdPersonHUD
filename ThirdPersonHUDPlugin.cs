@@ -35,7 +35,7 @@ namespace ThirdPersonHUD
                 key: "Enabled",
                 defaultValue: true,
                 configDescription: new ConfigDescription(
-                    "Whether the mod is active. Can be toggled in-game with the hotkey below."
+                    "Whether the mod is active."
                 )
             );
 
