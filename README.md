@@ -31,7 +31,17 @@ Once installed, the mod is **enabled by default**. You can toggle or fine-tune i
 
 2. Download the latest release of this mod from the [Releases page](https://github.com/YourGitHubUsername/YourModName/releases).
 
-3. Extract the contents of the zip file into the BepInEx/plugins folder.
+3. Extract the contents of the zip file into the `BepInEx/plugins` folder.
+
+4. **Important for Nuclear Option**:
+   - Open the BepInEx configuration file located at `Nuclear Option/BepInEx/config/BepInEx.cfg`  
+   - Find the `[Chainloader]` section (or add it if missing) and make sure this line is present and set correctly:
+
+      `HideManagerGameObject = true`
+
+   - Save the file.
+   
+*Why is this needed?* Some Unity games (including Nuclear Option) perform aggressive cleanup of certain scene objects or `DontDestroyOnLoad` GameObjects during scene changes, camera mode switches, or other events. This can destroy BepInEx's internal manager object too early, breaking plugin loading/execution. Setting `HideManagerGameObject = true` hides the BepInEx manager from normal Unity hierarchy inspection/cleanup, preventing it from being destroyed prematurely and ensuring mods like this one function correctly.
 
 ## Disclaimer
 
