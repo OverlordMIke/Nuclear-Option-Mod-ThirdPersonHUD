@@ -11,13 +11,12 @@ namespace ThirdPersonHUD
         // Mod identification
         private const string MyGUID = "com.gnol.thirdpersonhud";
         private const string PluginName = "ThirdPersonHUD";
-        private const string VersionString = "1.1.0";
+        private const string VersionString = "1.1.1";
 
         public static ManualLogSource Log { get; private set; }
 
         // Config entries
         private static ConfigEntry<bool> Enabled { get; set; }
-        private static ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
 
         // Runtime state
         private bool isEnabled;
@@ -36,16 +35,7 @@ namespace ThirdPersonHUD
                 key: "Enabled",
                 defaultValue: true,
                 configDescription: new ConfigDescription(
-                    "Whether the mod is active. Can be toggled in-game with the hotkey below."
-                )
-            );
-
-            ToggleKey = Config.Bind(
-                section: "Hotkeys",
-                key: "Toggle Hotkey",
-                defaultValue: new KeyboardShortcut(KeyCode.F10),
-                configDescription: new ConfigDescription(
-                    "Press this key to toggle the mod on/off."
+                    "Whether or not the mod is active."
                 )
             );
 
@@ -68,14 +58,6 @@ namespace ThirdPersonHUD
 
         private void Update()
         {
-            // Detect hotkey press (IsDown = fires once per press)
-            if (ToggleKey.Value.IsDown())
-            {
-                isEnabled = !isEnabled;
-                Enabled.Value = isEnabled; // Sync to config (auto-saves)
-                Log.LogInfo($"ThirdPersonHUD toggled {(isEnabled ? "ON" : "OFF")} via hotkey");
-            }
-
             // Only force-enable if currently enabled
             if (!isEnabled)
                 return;
