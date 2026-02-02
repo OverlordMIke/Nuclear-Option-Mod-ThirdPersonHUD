@@ -8,7 +8,7 @@
 
 ## About
 
-This mod fixes a common annoyance in **Orbit camera mode** (external view):
+This mod attempts to fix a common annoyance in **Orbit camera mode** (external view):
 - The in-cockpit **HUD** is now properly visible while flying in Orbit camera.
 - The **horizon line** and **pitch increment lines** are automatically hidden to reduce screen clutter and improve visibility.
 
