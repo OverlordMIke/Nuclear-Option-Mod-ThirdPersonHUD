@@ -1,3 +1,5 @@
+**I am just a hobbyist, not a professional programmer. I'll try my best to make this work well enough, but please set your expectations accordingly. Keep your fingers crossed and peepers peeled for a better mod to come along, or for the function to be added into the vanilla game. Happy flying o7**
+
 # Orbit HUD for Nuclear Option
 
 **A client-side mod that improves the Orbit camera experience in Nuclear Option.**
