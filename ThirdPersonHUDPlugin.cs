@@ -1,6 +1,7 @@
 ﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
+using HarmonyLib;
 using UnityEngine;
 
 namespace ThirdPersonHUD
@@ -11,25 +12,27 @@ namespace ThirdPersonHUD
         // Mod identification
         private const string MyGUID = "com.gnol.thirdpersonhud";
         private const string PluginName = "ThirdPersonHUD";
-        private const string VersionString = "1.1.1";
+        private const string VersionString = "1.2.0";
 
         public static ManualLogSource Log { get; private set; }
 
         // Config entries
-        private static ConfigEntry<bool> Enabled { get; set; }
+        private const string CurrentConfigVersion = "c1.0";
+        public static ConfigEntry<bool> Enabled { get; set; }
+        public static ConfigEntry<bool> OrbitPitchLadderHidden { get; set; }
 
-        // Runtime state
-        private bool isEnabled;
-
-        // Camera References
-        private readonly string[] orbit = { "COIN", "trainer", "UtilityHelo1", "CAS1", "AttackHelo1", "Fighter1", "SmallFighter1", "QuadVTOL1", "Multirole1", "EW1", "Darkreach" };
-        
         private void Awake()
         {
             Log = Logger;
             Logger.LogInfo($"{PluginName} v{VersionString} is loading...");
 
-            // Bind config options
+            var savedVersion = Config.Bind(
+                section: "Internal",
+                key: "ConfigVersion",
+                defaultValue: "",
+                "Do not touch - used for auto-updating config."
+            ).Value;
+
             Enabled = Config.Bind(
                 section: "General",
                 key: "Enabled",
@@ -39,108 +42,140 @@ namespace ThirdPersonHUD
                 )
             );
 
-            // Initialize runtime state from config
-            isEnabled = Enabled.Value;
+            OrbitPitchLadderHidden = Config.Bind(
+                section: "General",
+                key: "HidePitchLadder",
+                defaultValue: true,
+                configDescription: new ConfigDescription(
+                    "If true, the pitch ladder will be hidden when in orbit/chase."
+                )
+            );
 
-            // React if user changes "Enabled" directly in Configuration Manager
-            Enabled.SettingChanged += (sender, args) =>
+            if (savedVersion != CurrentConfigVersion)
             {
-                bool newState = Enabled.Value;
-                if (newState != isEnabled)
+                Logger.LogInfo($"Config version changed ({savedVersion} -> {CurrentConfigVersion}). Updating config.");
+
+                var savedVersionConfig = Config.Bind(
+                    section: "Internal",
+                    key: "ConfigVersion",
+                    defaultValue: CurrentConfigVersion,
+                    configDescription: new ConfigDescription(
+                        "Do not touch - used for auto-updating config."
+                    )
+                );
+
+                savedVersionConfig.Value = CurrentConfigVersion;
+
+                Config.Save();
+
+                Logger.LogInfo("Config automatically updated.");
+            }
+
+            var harmony = new Harmony(MyGUID);
+            harmony.PatchAll();
+
+            Logger.LogInfo($"{PluginName} v{VersionString} loaded successfully. State: {(Enabled.Value ? "Enabled" : "Disabled")}");
+        }
+    }
+
+    [HarmonyPatch(typeof(CameraStateManager), nameof(CameraStateManager.SwitchState))]
+    internal static class CameraStateManager_SwitchState_Patch
+    {
+        private static readonly string[] OrbitParents =
+        {
+            "COIN", "trainer", "UtilityHelo1", "CAS1", "AttackHelo1",
+            "Fighter1", "SmallFighter1", "QuadVTOL1", "Multirole1",
+            "EW1", "Darkreach"
+        };
+
+        static void Postfix(CameraStateManager __instance, CameraBaseState state)
+        {
+            if (!ThirdPersonHUD.Enabled.Value)
+                return;
+
+            string newMode = GetCameraModeFromState(__instance, state);
+
+            if (string.IsNullOrEmpty(newMode))
+                return;
+
+            ApplyHUDVisibility(newMode);
+        }
+
+        private static string GetCameraModeFromState(CameraStateManager camManager, CameraBaseState newState)
+        {
+            if (newState == camManager.cockpitState)
+            {
+                return "cockpit";
+            }
+
+            if (newState == camManager.TVState)
+            {
+                return "flyby";
+            }
+
+            if (newState == camManager.orbitState)
+            {
+                return "orbit";
+            }
+
+            // Fallback
+            var mainCam = Camera.main;
+            if (mainCam == null) return null;
+
+            var parent = mainCam.transform?.parent?.parent;
+            if (parent == null) return null;
+
+            string parentName = parent.name;
+
+            if (parentName == "helmetCamPoint")
+                return "cockpit";
+
+            if (parentName == "Datum")
+                return "flyby";
+
+            foreach (var orbitName in OrbitParents)
+            {
+                if (parentName == orbitName)
+                    return "orbit";
+            }
+
+            return null;
+        }
+
+        private static void ApplyHUDVisibility(string mode)
+        {
+            if (mode == "cockpit")
+            {
+                Show("SceneEssentials/Canvas/HUDCanvas");
+                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
+                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
                 {
-                    isEnabled = newState;
-                    Log.LogInfo($"Mod enabled state changed via config: {isEnabled}");
+                    Show("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
                 }
-            };
-
-            Logger.LogInfo($"{PluginName} v{VersionString} loaded successfully. Initial state: {(isEnabled ? "Enabled" : "Disabled")}");
-        }
-
-        private void Update()
-        {
-            // Only force-enable if currently enabled
-            if (!isEnabled)
-                return;
-
-            // Check Camera Mode
-            string cameraName = "Main Camera";
-            GameObject cameraObject = GameObject.Find(cameraName);
-            if (cameraObject == null)
-            {
-                return;
             }
-
-            string camParentName = cameraObject.transform?
-                              .parent?
-                              .parent?
-                              .name;
-
-            if (camParentName == null)
+            else if (mode == "orbit")
             {
-                return;
-            }
-
-            string currentMode = "";
-
-            for (int i = 0; i < orbit.Length; i++)
-            {
-                if (camParentName == orbit[i])
+                Show("SceneEssentials/Canvas/HUDCanvas");
+                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
+                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
                 {
-                    currentMode = "orbit";
+                    Hide("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
                 }
             }
-
-            if (camParentName == "helmetCamPoint")
-            {
-                currentMode = "cockpit";
-            }
-
-            if (camParentName == "Datum")
-            {
-                currentMode = "flyby";
-            }
-
-            if (currentMode == "")
-            {
-                return;
-            }
-
-            if (currentMode == "cockpit")
-            {
-                ShowGameObjectByPath("SceneEssentials/Canvas/HUDCanvas");
-                ShowGameObjectByPath("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
-                ShowGameObjectByPath("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-            }
-            
-            if (currentMode == "orbit")
-            {
-                ShowGameObjectByPath("SceneEssentials/Canvas/HUDCanvas");
-                HideGameObjectByPath("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
-                ShowGameObjectByPath("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-            }
-
-            if (currentMode == "flyby")
-            {
-                HideGameObjectByPath("SceneEssentials/Canvas/HUDCanvas");
-            }
         }
 
-        private void HideGameObjectByPath(string path)
+        private static void Show(string path)
         {
-            GameObject go = GameObject.Find(path);
-            if (go != null && go.activeSelf)
-            {
-                go.SetActive(false);
-            }
-        }
-
-        private void ShowGameObjectByPath(string path)
-        {
-            GameObject go = GameObject.Find(path);
+            var go = GameObject.Find(path);
             if (go != null && !go.activeSelf)
-            {
                 go.SetActive(true);
-            }
+        }
+
+        private static void Hide(string path)
+        {
+            var go = GameObject.Find(path);
+            if (go != null && go.activeSelf)
+                go.SetActive(false);
         }
     }
 }
