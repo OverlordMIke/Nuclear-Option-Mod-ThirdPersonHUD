@@ -12,7 +12,7 @@ namespace ThirdPersonHUD
         // Mod identification
         private const string MyGUID = "com.gnol.thirdpersonhud";
         private const string PluginName = "ThirdPersonHUD";
-        private const string VersionString = "1.2.0";
+        private const string VersionString = "1.2.1";
 
         public static ManualLogSource Log { get; private set; }
 
@@ -20,6 +20,9 @@ namespace ThirdPersonHUD
         private const string CurrentConfigVersion = "c1.0";
         public static ConfigEntry<bool> Enabled { get; set; }
         public static ConfigEntry<bool> OrbitPitchLadderHidden { get; set; }
+
+        // Variables
+        public static string currentCameraMode = "";
 
         private void Awake()
         {
@@ -76,6 +79,46 @@ namespace ThirdPersonHUD
 
             Logger.LogInfo($"{PluginName} v{VersionString} loaded successfully. State: {(Enabled.Value ? "Enabled" : "Disabled")}");
         }
+
+        public static void ApplyHUDVisibility()
+        {
+            if (currentCameraMode == "cockpit")
+            {
+                Show("SceneEssentials/Canvas/HUDCanvas");
+                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
+                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
+                {
+                    Show("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                }
+            }
+            else if (currentCameraMode == "orbit" || currentCameraMode == "chase")
+            {
+                Show("SceneEssentials/Canvas/HUDCanvas");
+                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
+                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
+                {
+                    Hide("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                }
+            }
+            else
+            {
+                Hide("SceneEssentials/Canvas/HUDCanvas");
+            }
+        }
+
+        private static void Show(string path)
+        {
+            var go = GameObject.Find(path);
+            if (go != null && !go.activeSelf)
+                go.SetActive(true);
+        }
+
+        private static void Hide(string path)
+        {
+            var go = GameObject.Find(path);
+            if (go != null && go.activeSelf)
+                go.SetActive(false);
+        }
     }
 
     [HarmonyPatch(typeof(CameraStateManager), nameof(CameraStateManager.SwitchState))]
@@ -93,89 +136,68 @@ namespace ThirdPersonHUD
             if (!ThirdPersonHUD.Enabled.Value)
                 return;
 
-            string newMode = GetCameraModeFromState(__instance, state);
-
-            if (string.IsNullOrEmpty(newMode))
-                return;
-
-            ApplyHUDVisibility(newMode);
+            SetCameraModeFromState(__instance, state);
+            ThirdPersonHUD.ApplyHUDVisibility();
         }
 
-        private static string GetCameraModeFromState(CameraStateManager camManager, CameraBaseState newState)
+        private static void SetCameraModeFromState(CameraStateManager camManager, CameraBaseState newState)
         {
             if (newState == camManager.cockpitState)
             {
-                return "cockpit";
+                ThirdPersonHUD.currentCameraMode = "cockpit";
             }
-
-            if (newState == camManager.TVState)
+            else if (newState == camManager.TVState)
             {
-                return "flyby";
+                ThirdPersonHUD.currentCameraMode = "flyby";
             }
-
-            if (newState == camManager.orbitState)
+            else if (newState == camManager.orbitState)
             {
-                return "orbit";
+                ThirdPersonHUD.currentCameraMode = "orbit";
+            }
+            else if (newState == camManager.freeState)
+            {
+                ThirdPersonHUD.currentCameraMode = "free";
+            }
+            else if (newState == camManager.controlledState)
+            {
+                ThirdPersonHUD.currentCameraMode = "control";
+            }else if (newState == camManager.chaseState)
+            {
+                ThirdPersonHUD.currentCameraMode = "chase";
             }
 
-            // Fallback
+            /* Fallback
             var mainCam = Camera.main;
-            if (mainCam == null) return null;
+            if (mainCam == null) return;
 
             var parent = mainCam.transform?.parent?.parent;
-            if (parent == null) return null;
+            if (parent == null) return;
 
             string parentName = parent.name;
 
             if (parentName == "helmetCamPoint")
-                return "cockpit";
+                ThirdPersonHUD.currentCameraMode = "cockpit";
 
             if (parentName == "Datum")
-                return "flyby";
+                ThirdPersonHUD.currentCameraMode = "flyby";
 
             foreach (var orbitName in OrbitParents)
             {
                 if (parentName == orbitName)
-                    return "orbit";
-            }
-
-            return null;
-        }
-
-        private static void ApplyHUDVisibility(string mode)
-        {
-            if (mode == "cockpit")
-            {
-                Show("SceneEssentials/Canvas/HUDCanvas");
-                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
                 {
-                    Show("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                    ThirdPersonHUD.currentCameraMode = "orbit";
+                    break;
                 }
-            }
-            else if (mode == "orbit")
-            {
-                Show("SceneEssentials/Canvas/HUDCanvas");
-                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
-                {
-                    Hide("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
-                }
-            }
+            }*/
         }
+    }
 
-        private static void Show(string path)
+    [HarmonyPatch(typeof(GameplayUI), nameof(GameplayUI.ResumeGame))]
+    internal static class GameplayUI_ResumeGame_Patch
+    {
+        static void Postfix()
         {
-            var go = GameObject.Find(path);
-            if (go != null && !go.activeSelf)
-                go.SetActive(true);
-        }
-
-        private static void Hide(string path)
-        {
-            var go = GameObject.Find(path);
-            if (go != null && go.activeSelf)
-                go.SetActive(false);
+            ThirdPersonHUD.ApplyHUDVisibility();
         }
     }
 }
