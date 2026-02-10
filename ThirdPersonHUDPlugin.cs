@@ -3,6 +3,9 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using Mirage;
+using System.Linq;
 
 namespace ThirdPersonHUD
 {
@@ -12,7 +15,7 @@ namespace ThirdPersonHUD
         // Mod identification
         private const string MyGUID = "com.gnol.thirdpersonhud";
         private const string PluginName = "ThirdPersonHUD";
-        private const string VersionString = "1.2.1";
+        private const string VersionString = "1.2.2";
 
         public static ManualLogSource Log { get; private set; }
 
@@ -23,6 +26,8 @@ namespace ThirdPersonHUD
 
         // Variables
         public static string currentCameraMode = "";
+
+        public static bool isSpectating = false;
 
         private void Awake()
         {
@@ -78,26 +83,43 @@ namespace ThirdPersonHUD
             harmony.PatchAll();
 
             Logger.LogInfo($"{PluginName} v{VersionString} loaded successfully. State: {(Enabled.Value ? "Enabled" : "Disabled")}");
+            //(added System.Linq for this)Log.LogInfo($"Patched SetFollowingUnit: {harmony.GetPatchedMethods().Any(m => m.Name == nameof(CameraStateManager.SetFollowingUnit))}");
         }
 
         public static void ApplyHUDVisibility()
         {
             if (currentCameraMode == "cockpit")
             {
-                Show("SceneEssentials/Canvas/HUDCanvas");
-                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
+                if (isSpectating)
                 {
+                    Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
+                    Hide("SceneEssentials/Canvas/HUDCanvas");
+                }
+                else
+                {
+                    Show("SceneEssentials/Canvas/HUDCanvas");
                     Show("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                    Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
                 }
             }
-            else if (currentCameraMode == "orbit" || currentCameraMode == "chase")
+            else if ((currentCameraMode == "orbit" || currentCameraMode == "chase"))
             {
-                Show("SceneEssentials/Canvas/HUDCanvas");
-                Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
-                if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
+                if (isSpectating)
                 {
-                    Hide("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                    Hide("SceneEssentials/Canvas/HUDCanvas");
+                }
+                else
+                {
+                    Show("SceneEssentials/Canvas/HUDCanvas");
+                    Show("SceneEssentials/Canvas/HUDCanvas/HMDCenter/LowerLeftPanel/HUDMapAnchor/MapCanvas");
+                    if (ThirdPersonHUD.OrbitPitchLadderHidden.Value)
+                    {
+                        Hide("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                    }
+                    else
+                    {
+                        Show("SceneEssentials/Canvas/HUDCanvas/HUDCenter/pitchCompassCenter");
+                    }
                 }
             }
             else
@@ -138,57 +160,41 @@ namespace ThirdPersonHUD
 
             SetCameraModeFromState(__instance, state);
             ThirdPersonHUD.ApplyHUDVisibility();
+            //ThirdPersonHUD.Log.LogInfo($"\nCamera Mode: {ThirdPersonHUD.currentCameraMode}\nSpectating: {ThirdPersonHUD.isSpectating}");
         }
 
         private static void SetCameraModeFromState(CameraStateManager camManager, CameraBaseState newState)
         {
-            if (newState == camManager.cockpitState)
+            switch (newState)
             {
-                ThirdPersonHUD.currentCameraMode = "cockpit";
-            }
-            else if (newState == camManager.TVState)
-            {
-                ThirdPersonHUD.currentCameraMode = "flyby";
-            }
-            else if (newState == camManager.orbitState)
-            {
-                ThirdPersonHUD.currentCameraMode = "orbit";
-            }
-            else if (newState == camManager.freeState)
-            {
-                ThirdPersonHUD.currentCameraMode = "free";
-            }
-            else if (newState == camManager.controlledState)
-            {
-                ThirdPersonHUD.currentCameraMode = "control";
-            }else if (newState == camManager.chaseState)
-            {
-                ThirdPersonHUD.currentCameraMode = "chase";
-            }
+                case var s when s == camManager.cockpitState:
+                    ThirdPersonHUD.currentCameraMode = "cockpit";
+                    break;
 
-            /* Fallback
-            var mainCam = Camera.main;
-            if (mainCam == null) return;
+                case var s when s == camManager.TVState:
+                    ThirdPersonHUD.currentCameraMode = "flyby";
+                    break;
 
-            var parent = mainCam.transform?.parent?.parent;
-            if (parent == null) return;
-
-            string parentName = parent.name;
-
-            if (parentName == "helmetCamPoint")
-                ThirdPersonHUD.currentCameraMode = "cockpit";
-
-            if (parentName == "Datum")
-                ThirdPersonHUD.currentCameraMode = "flyby";
-
-            foreach (var orbitName in OrbitParents)
-            {
-                if (parentName == orbitName)
-                {
+                case var s when s == camManager.orbitState:
                     ThirdPersonHUD.currentCameraMode = "orbit";
                     break;
-                }
-            }*/
+
+                case var s when s == camManager.freeState:
+                    ThirdPersonHUD.currentCameraMode = "free";
+                    break;
+
+                case var s when s == camManager.controlledState:
+                    ThirdPersonHUD.currentCameraMode = "control";
+                    break;
+
+                case var s when s == camManager.chaseState:
+                    ThirdPersonHUD.currentCameraMode = "chase";
+                    break;
+
+                default:
+                    ThirdPersonHUD.Log.LogInfo("Error: Could not determine camera mode.");
+                    break;
+            }
         }
     }
 
@@ -197,7 +203,53 @@ namespace ThirdPersonHUD
     {
         static void Postfix()
         {
+            if (!ThirdPersonHUD.Enabled.Value)
+                return;
             ThirdPersonHUD.ApplyHUDVisibility();
+        }
+    }
+
+    [HarmonyPatch(typeof(DynamicMap), nameof(DynamicMap.Minimize))]
+    internal static class DynamicMap_Minimize_Patch
+    {
+        static void Postfix()
+        {
+            if (!ThirdPersonHUD.Enabled.Value)
+                return;
+            ThirdPersonHUD.ApplyHUDVisibility();
+        }
+    }
+
+    /*[HarmonyPatch(typeof(DynamicMap), nameof(DynamicMap.Maximize))]
+    internal static class DynamicMap_Maximize_Patch
+    {
+        static void Postfix()
+        {
+        }
+    }*/
+    // Unused for now
+
+    [HarmonyPatch(typeof(GameplayUI), nameof(GameplayUI.SelectAircraft))]
+    internal static class GameplayUI_SelectAircraft_Patch
+    {
+        static void Postfix()
+        {
+            if (!ThirdPersonHUD.Enabled.Value)
+                return;
+            ThirdPersonHUD.isSpectating = false;
+        }
+    }
+
+    [HarmonyPatch(typeof(CameraStateManager), nameof(CameraStateManager.SetFollowingUnit))]
+    internal static class CameraStateManager_SetFollowingUnit_Patch
+    {
+        static void Postfix(Unit unit)
+        {
+            if (!ThirdPersonHUD.Enabled.Value)
+                return;
+            var localAircraft = SceneSingleton<CombatHUD>.i?.aircraft;
+            bool isLocalPlayer = localAircraft != null && localAircraft == unit;
+            ThirdPersonHUD.isSpectating = !isLocalPlayer;
         }
     }
 }
